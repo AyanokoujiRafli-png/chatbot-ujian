@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Quiz Interaktif</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header dengan karakter sosis -->
+        <div class="header">
+            <div class="sausage-char" id="sausage">
+                <div class="sausage-body">
+                    <div class="eye left"></div>
+                    <div class="eye right"></div>
+                    <div class="mouth"></div>
+                </div>
+            </div>
+            <h1>🤖 Chatbot Quiz</h1>
+            <p>Belajar sambil bermain dengan si Sosis Lucu!</p>
+        </div>
+
+        <!-- Area Chat -->
+        <div class="chat-area" id="chatArea">
+            <div class="chat-message bot">
+                <div class="avatar">🤖</div>
+                <div class="message">
+                    Halo! Aku Bot Quiz Lucu. <br>
+                    Siap menguji pengetauanmu? <br>
+                    Silakan masukkan namamu untuk memulai!
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="Ketik jawaban atau namamu di sini..." autocomplete="off">
+            <button id="sendBtn">📤 Kirim</button>
+        </div>
+
+        <!-- Area Pilihan (untuk tombol pilihan ganda) -->
+        <div class="pilihan-area" id="pilihanArea" style="display: none;">
+            <div class="pilihan-grid" id="pilihanGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let currentSoal = null;
+        let currentPilihan = [];
+        let menungguJawaban = false;
+
+        const chatArea = document.getElementById('chatArea');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const pilihanArea = document.getElementById('pilihanArea');
+        const pilihanGrid = document.getElementById('pilihanGrid');
+        const sausage = document.getElementById('sausage');
+
+        // Animasi karakter
+        function setEkspresi(ekspresi) {
+            const mouth = document.querySelector('.mouth');
+            const eyes = document.querySelectorAll('.eye');
+            
+            if (ekspresi === 'senang') {
+                mouth.style.borderRadius = '50%';
+                mouth.style.height = '15px';
+                mouth.style.width = '25px';
+                mouth.style.background = '#8B4513';
+                eyes.forEach(e => e.style.transform = 'scale(1.2)');
+            } else if (ekspresi === 'sedih') {
+                mouth.style.borderRadius = '50%';
+                mouth.style.height = '25px';
+                mouth.style.width = '25px';
+                mouth.style.background = '#8B4513';
+                mouth.style.borderTopLeftRadius = '0';
+                mouth.style.borderTopRightRadius = '0';
+                eyes.forEach(e => e.style.transform = 'scale(0.8)');
+            } else if (ekspresi === 'semangat') {
+                mouth.style.borderRadius = '0';
+                mouth.style.height = '20px';
+                mouth.style.width = '30px';
+                mouth.style.background = '#FF6347';
+                eyes.forEach(e => {
+                    e.style.transform = 'scale(1.5)';
+                    e.style.background = '#FFD700';
+                });
+            } else {
+                // normal
+                mouth.style.borderRadius = '50%';
+                mouth.style.height = '15px';
+                mouth.style.width = '25px';
+                mouth.style.background = '#8B4513';
+                eyes.forEach(e => {
+                    e.style.transform = 'scale(1)';
+                    e.style.background = 'white';
+                });
+            }
+            
+            // Animasi bounce
+            sausage.style.animation = 'bounce 0.3s ease';
+            setTimeout(() => {
+                sausage.style.animation = '';
+            }, 300);
+        }
+
+        function tambahPesan(teks, pengirim = 'bot') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${pengirim}`;
+            messageDiv.innerHTML = `
+                <div class="avatar">${pengirim === 'bot' ? '🤖' : '👤'}</div>
+                <div class="message">${teks}</div>
+            `;
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function tampilkanPilihan(pilihan) {
+            pilihanGrid.innerHTML = '';
+            pilihan.forEach(p => {
+                const btn = document.createElement('button');
+                btn.className = 'pilihan-btn';
+                btn.textContent = p;
+                btn.onclick = () => {
+                    if (!menungguJawaban) return;
+                    kirimJawaban(p);
+                };
+                pilihanGrid.appendChild(btn);
+            });
+            pilihanArea.style.display = 'block';
+            userInput.disabled = true;
+            userInput.placeholder = 'Klik tombol pilihan di atas...';
+        }
+
+        function sembunyikanPilihan() {
+            pilihanArea.style.display = 'none';
+            userInput.disabled = false;
+            userInput.placeholder = 'Ketik jawaban atau namamu di sini...';
+            userInput.focus();
+        }
+
+        async function kirimJawaban(jawaban) {
+            if (!menungguJawaban) return;
+            menungguJawaban = false;
+            
+            tambahPesan(jawaban, 'user');
+            
+            try {
+                const response = await fetch('/jawab', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        jawaban: jawaban
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.selesai) {
+                    if (data.benar) {
+                        setEkspresi('senang');
+                        tambahPesan(`✅ Benar! +1 poin 🎉`);
+                    } else {
+                        setEkspresi('sedih');
+                        tambahPesan(`❌ Salah! Jawaban yang benar adalah yang kamu pilih tadi 😅`);
+                    }
+                    tambahPesan(`📊 Skor sementara: ${data.score}/${data.total}`);
+                    tambahPesan(`🎉🎉🎉 ${data.pesan} 🎉🎉🎉`);
+                    tambahPesan(`Terima kasih sudah bermain! Refresh halaman untuk mulai lagi.`);
+                    sembunyikanPilihan();
+                    userInput.disabled = true;
+                    sendBtn.disabled = true;
+                    setEkspresi('senang');
+                } else {
+                    if (data.benar) {
+                        setEkspresi('senang');
+                        tambahPesan(`✅ Benar! +1 poin 🎉`);
+                    } else {
+                        setEkspresi('sedih');
+                        tambahPesan(`❌ Salah! Jawaban yang benar adalah ${currentSoal.jawaban} 😅`);
+                    }
+                    tambahPesan(`📊 Skor sementara: ${data.score_sementara}/${data.total}`);
+                    
+                    currentSoal = {
+                        soal: data.soal,
+                        pilihan: data.pilihan
+                    };
+                    
+                    tambahPesan(`📝 Soal ${data.nomor}/${data.total}: ${data.soal}`);
+                    tampilkanPilihan(data.pilihan);
+                    menungguJawaban = true;
+                    setEkspresi('semangat');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                tambahPesan('Maaf, terjadi error. Coba lagi ya!');
+                menungguJawaban = true;
+            }
+        }
+
+        async function mulaiQuiz(nama) {
+            try {
+                const response = await fetch('/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nama: nama })
+                });
+                
+                const data = await response.json();
+                sessionId = data.session_id;
+                currentSoal = {
+                    soal: data.soal,
+                    pilihan: data.pilihan
+                };
+                
+                tambahPesan(`Halo ${nama}! Selamat datang di Quiz Interaktif 🎓`);
+                tambahPesan(`📝 Soal ${data.nomor}/${data.total}: ${data.soal}`);
+                tampilkanPilihan(data.pilihan);
+                menungguJawaban = true;
+                setEkspresi('semangat');
+            } catch (error) {
+                console.error('Error:', error);
+                tambahPesan('Maaf, server sedang sibuk. Coba refresh halaman!');
+            }
+        }
+
+        sendBtn.addEventListener('click', async () => {
+            const pesan = userInput.value.trim();
+            if (!pesan) return;
+            
+            userInput.value = '';
+            
+            if (!sessionId) {
+                // Belum mulai quiz, ini adalah nama
+                mulaiQuiz(pesan);
+            } else if (menungguJawaban && currentSoal && currentSoal.pilihan.includes(pesan)) {
+                // User memilih jawaban dari teks
+                kirimJawaban(pesan);
+            } else {
+                tambahPesan('Silakan pilih jawaban dari tombol yang tersedia!', 'bot');
+            }
+        });
+
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendBtn.click();
+        });
+
+        // Animasi CSS tambahan
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes bounce {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-10px); }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
